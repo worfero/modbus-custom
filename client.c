@@ -12,8 +12,8 @@
 
 int main()
 {
-    int new_socket, connfd;
-    struct sockaddr_in servaddr, cli;
+    int new_socket;
+    struct sockaddr_in servaddr;
 
     // socket create and verification
     new_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -39,13 +39,16 @@ int main()
     else
         printf("connected to the server..\n");
 
-    //write(new_socket, buff, sizeof(buff));
+    char signal[1] = {0};
+    write(new_socket, signal, sizeof(signal));
 
     char buffer_rec[MAX] = {0};
     recv(new_socket, buffer_rec, sizeof(buffer_rec) - 1, 0);
-    for (int i = 0; i < 8; i++) {
-        printf("Byte %d: 0x%02X\n", i, (unsigned char)buffer_rec[i]);
+    printf("0x");
+    for(int i = 0; i < 8; i++){
+        printf("%02X ", (unsigned char)buffer_rec[i]);
     }
+    printf("\n");
 
     // close the socket
     close(new_socket);

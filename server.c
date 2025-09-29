@@ -59,7 +59,6 @@ int main() {
 
     printf("Server listening on port %d\n", PORT);
 
-    _ssize_t valread;
     while(1){
         struct ModbusFrame packet;
 
@@ -70,11 +69,10 @@ int main() {
 
         // Memory allocation for data section
         packet.data = (char *)malloc(119 * sizeof(char));
-
-        packet.transac_id = 0x1234;
-        packet.length = 1;
+        
+        packet.transac_id = 1;
         packet.func_code = 3;
-        packet.length = 8;
+        packet.length = 5;
 
         unsigned char *transac_id_ptr = (unsigned char *)&packet.transac_id;
         unsigned char *prot_id_ptr = (unsigned char *)&packet.prot_id;
@@ -86,22 +84,27 @@ int main() {
         }
         else {
             printf("Connection accepted\n");   
-            char buff_sent[BUF_SIZE] = {transac_id_ptr[LSB],
-                                        transac_id_ptr[MSB],
-                                        prot_id_ptr[LSB],
+            char buff_sent[BUF_SIZE] = {transac_id_ptr[MSB],
+                                        transac_id_ptr[LSB],
                                         prot_id_ptr[MSB],
-                                        length_ptr[LSB],
+                                        prot_id_ptr[LSB],
                                         length_ptr[MSB],
-                                        packet.unit_id, 
-                                        packet.func_code};
-            for (int i = 0; i < 8; i++) {
-                printf("Byte %d: 0x%02X\n", i, (unsigned char)buff_sent[i]);
-            }
-            //while((valread = read(new_socket, buffer, BUF_SIZE)) > 0) {
-                
+                                        length_ptr[LSB],
+                                        packet.unit_id,
+                                        packet.func_code,
+                                        0x02,
+                                        0x00,
+                                        0x25};
+            if((read(new_socket, buffer, BUF_SIZE)) > 0) {
+                printf("0x");
+                for(int i = 0; i < 8; i++){
+                    printf("%02X ", (unsigned char)buff_sent[i]);
+                }
+                printf("\n");
                 send(new_socket, buff_sent, sizeof(buff_sent), 0);
+                packet.transac_id++;
                 //memset(buff_sent, 0, sizeof(buff_sent));
-            //}
+            }
         }
         free(packet.data);
     }
