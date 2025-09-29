@@ -5,7 +5,7 @@
 #include <arpa/inet.h>
 
 #define PORT 502
-#define BUF_SIZE 127
+#define BUF_SIZE 128
 
 #define MSB 1
 #define LSB 0
@@ -26,7 +26,6 @@ int main() {
     struct sockaddr_in address;
     int opt = 1;
     int addrlen = sizeof(address);
-    char buffer[BUF_SIZE] = {0};
 
     // Create socket fd
     if((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
@@ -70,13 +69,13 @@ int main() {
         // Memory allocation for data section
         packet.data = (char *)malloc(119 * sizeof(char));
         
-        packet.transac_id = 1;
+        packet.transac_id = 0;
         packet.func_code = 3;
         packet.length = 5;
 
-        unsigned char *transac_id_ptr = (unsigned char *)&packet.transac_id;
-        unsigned char *prot_id_ptr = (unsigned char *)&packet.prot_id;
-        unsigned char *length_ptr = (unsigned char *)&packet.length;
+        char *transac_id_ptr = (char *)&packet.transac_id;
+        char *prot_id_ptr = (char *)&packet.prot_id;
+        char *length_ptr = (char *)&packet.length;
 
         // Accept connections
         if((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
@@ -84,26 +83,33 @@ int main() {
         }
         else {
             printf("Connection accepted\n");   
-            char buff_sent[BUF_SIZE] = {transac_id_ptr[MSB],
-                                        transac_id_ptr[LSB],
-                                        prot_id_ptr[MSB],
-                                        prot_id_ptr[LSB],
-                                        length_ptr[MSB],
-                                        length_ptr[LSB],
-                                        packet.unit_id,
-                                        packet.func_code,
-                                        0x02,
-                                        0x00,
-                                        0x25};
-            if((read(new_socket, buffer, BUF_SIZE)) > 0) {
-                printf("0x");
-                for(int i = 0; i < 8; i++){
-                    printf("%02X ", (unsigned char)buff_sent[i]);
+            char *buff_recv = (char *)malloc(BUF_SIZE * sizeof(char));
+            char *buff_sent = (char *)malloc(BUF_SIZE * sizeof(char));
+            buff_sent[0] = transac_id_ptr[MSB];
+            buff_sent[1] = transac_id_ptr[LSB];
+            buff_sent[2] = prot_id_ptr[MSB];
+            buff_sent[3] = prot_id_ptr[LSB];
+            buff_sent[4] = length_ptr[MSB];
+            buff_sent[5] = length_ptr[LSB];
+            buff_sent[6] = packet.unit_id;
+            buff_sent[7] = packet.func_code;
+            buff_sent[8] = 0x02;
+            buff_sent[9] = 0x00;
+            buff_sent[10] = 0x25;
+            _ssize_t bytes_recv;
+            if((bytes_recv = read(new_socket, buff_recv, BUF_SIZE)) > 0) {
+                printf("Client message: 0x");
+                for(int i = 0; i < bytes_recv; i++){
+                    printf("%02X ", (char)buff_recv[i]);
                 }
                 printf("\n");
-                send(new_socket, buff_sent, sizeof(buff_sent), 0);
+                printf("Server response: 0x");
+                for(int i = 0; i <= 10; i++){
+                    printf("%02X ", (char)buff_sent[i]);
+                }
+                printf("\n");
+                send(new_socket, buff_sent, 11, 0);
                 packet.transac_id++;
-                //memset(buff_sent, 0, sizeof(buff_sent));
             }
         }
         free(packet.data);
