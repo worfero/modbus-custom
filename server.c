@@ -4,8 +4,22 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
-#define PORT 8080
-#define BUF_SIZE 1024
+#define PORT 502
+#define BUF_SIZE 127
+
+#define MSB 1
+#define LSB 0
+
+struct ModbusFrame {
+    // MBAP Header
+    short transac_id;
+    short prot_id;
+    short length;
+    char unit_id;
+    // Application layer
+    char func_code;
+    char *data;
+};
 
 int main() {
     int server_fd, new_socket;
@@ -45,21 +59,52 @@ int main() {
 
     printf("Server listening on port %d\n", PORT);
 
-    // Accept connections
-    if((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
-        perror("Connection error");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Connection accepted\n");
-
     _ssize_t valread;
-    while((valread = read(new_socket, buffer, BUF_SIZE)) > 0) {
-        printf("Client: %s", buffer);
-        memset(buffer, 0, sizeof(buffer));
+    while(1){
+        struct ModbusFrame packet;
+
+        // for modbus transactions, protocol ID is always 0
+        packet.prot_id = 0;
+        // fixed unit ID for simplicity sake
+        packet.unit_id = 1;
+
+        // Memory allocation for data section
+        packet.data = (char *)malloc(119 * sizeof(char));
+
+        packet.transac_id = 0x1234;
+        packet.length = 1;
+        packet.func_code = 3;
+        packet.length = 8;
+
+        unsigned char *transac_id_ptr = (unsigned char *)&packet.transac_id;
+        unsigned char *prot_id_ptr = (unsigned char *)&packet.prot_id;
+        unsigned char *length_ptr = (unsigned char *)&packet.length;
+
+        // Accept connections
+        if((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
+            perror("Connection error");
+        }
+        else {
+            printf("Connection accepted\n");   
+            char buff_sent[BUF_SIZE] = {transac_id_ptr[LSB],
+                                        transac_id_ptr[MSB],
+                                        prot_id_ptr[LSB],
+                                        prot_id_ptr[MSB],
+                                        length_ptr[LSB],
+                                        length_ptr[MSB],
+                                        packet.unit_id, 
+                                        packet.func_code};
+            for (int i = 0; i < 8; i++) {
+                printf("Byte %d: 0x%02X\n", i, (unsigned char)buff_sent[i]);
+            }
+            //while((valread = read(new_socket, buffer, BUF_SIZE)) > 0) {
+                
+                send(new_socket, buff_sent, sizeof(buff_sent), 0);
+                //memset(buff_sent, 0, sizeof(buff_sent));
+            //}
+        }
+        free(packet.data);
     }
 
-    // Close socket
-    close(server_fd);
     return 0;
 }

@@ -6,18 +6,18 @@
 #include <strings.h> // bzero()
 #include <sys/socket.h>
 #include <unistd.h> // read(), write(), close()
-#define MAX 80
-#define PORT 8080
+#define MAX 127
+#define PORT 502
 #define SA struct sockaddr
 
 int main()
 {
-    int sockfd, connfd;
+    int new_socket, connfd;
     struct sockaddr_in servaddr, cli;
 
     // socket create and verification
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == -1) {
+    new_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (new_socket == -1) {
         printf("socket creation failed...\n");
         exit(0);
     }
@@ -31,7 +31,7 @@ int main()
     servaddr.sin_port = htons(PORT);
 
     // connect the client socket to server socket
-    if (connect(sockfd, (SA*)&servaddr, sizeof(servaddr))
+    if (connect(new_socket, (SA*)&servaddr, sizeof(servaddr))
         != 0) {
         printf("connection with the server failed...\n");
         exit(0);
@@ -39,9 +39,14 @@ int main()
     else
         printf("connected to the server..\n");
 
-    char buff[MAX] = "Vasco da Gama";
-    write(sockfd, buff, sizeof(buff));
+    //write(new_socket, buff, sizeof(buff));
+
+    char buffer_rec[MAX] = {0};
+    recv(new_socket, buffer_rec, sizeof(buffer_rec) - 1, 0);
+    for (int i = 0; i < 8; i++) {
+        printf("Byte %d: 0x%02X\n", i, (unsigned char)buffer_rec[i]);
+    }
 
     // close the socket
-    close(sockfd);
+    close(new_socket);
 }
