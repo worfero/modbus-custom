@@ -109,6 +109,7 @@ int main() {
                     packet.data[(i*2)+1] = (unsigned char)(MSBYTE(registers[buff_recv[9]+i]));
                 }
 
+                // creating response message
                 buff_sent[0] = (unsigned char)(MSBYTE(packet.transac_id));
                 buff_sent[1] = (unsigned char)(LSBYTE(packet.transac_id));
                 buff_sent[2] = (unsigned char)(MSBYTE(packet.prot_id));
