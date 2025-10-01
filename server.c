@@ -95,16 +95,16 @@ int main() {
                 packet.transac_id = TO_SHORT(buff_recv[0], buff_recv[1]);
                 // protocol ID is always zero for modbus
                 packet.prot_id = 0;
-                // packet length manually tuned for now
-                packet.length = 7;
                 // server unit ID
                 packet.unit_id = unitID;
-                // function code provided by the client's reponse 7th byte
+                // function code provided by the client's request 7th byte
                 packet.func_code = buff_recv[7];
-                // data length manually tuned for now
-                packet.data_length = 0x04;
-                //data manually added for now
-                for(int i=0; i < 2; i++) {
+                // data length is 2 times the number of registers (11th byte of client request)
+                packet.data_length = buff_recv[11]*2;
+                // packet length manually tuned for now
+                packet.length = packet.data_length + 3;
+                // data fetched from desired registers
+                for(int i=0; i < packet.data_length/2; i++) {
                     packet.data[i*2] = (unsigned char)(LSBYTE(registers[buff_recv[9]+i]));
                     packet.data[(i*2)+1] = (unsigned char)(MSBYTE(registers[buff_recv[9]+i]));
                 }
@@ -118,10 +118,9 @@ int main() {
                 buff_sent[6] = packet.unit_id;
                 buff_sent[7] = packet.func_code;
                 buff_sent[8] = packet.data_length;
-                buff_sent[9] = (unsigned char)(LSBYTE(packet.data[0]));
-                buff_sent[10] = (unsigned char)(MSBYTE(packet.data[1]));
-                buff_sent[11] = (unsigned char)(LSBYTE(packet.data[2]));
-                buff_sent[12] = (unsigned char)(MSBYTE(packet.data[3]));
+                for(int i=0; i < packet.data_length; i++) {
+                    buff_sent[9+i] = packet.data[i];
+                }
 
                 printf("Client message: 0x");
                 for(int i = 0; i < bytes_recv; i++){
@@ -133,7 +132,8 @@ int main() {
                     printf("%02X ", (unsigned char)buff_sent[i]);
                 }
                 printf("\n");
-                send(new_socket, buff_sent, 13, 0);
+                _ssize_t res_size = packet.length + 6;
+                send(new_socket, buff_sent, res_size, 0);
             }
             free(buff_sent);
             free(buff_recv);
