@@ -6,6 +6,27 @@
 #define PORT 502
 #define BUF_SIZE 128
 
+#define READ_COILS 0x01
+#define READ_DISCRETE_INPUTS 0x02
+#define READ_HOLDING_REGISTERS 0x03
+#define READ_INPUT_REGISTER 0x04
+#define WRITE_SINGLE_COIL 0x05
+#define WRITE_SINGLE_HOLDING_REGISTER 0x06
+#define WRITE_MULTIPLE_COILS 0x0F
+#define WRITE_MULTIPLE_HOLDING_REGISTERS 0x10
+
+// message bytes
+#define TRAN_ID_MSB 0
+#define TRAN_ID_LSB 1
+#define PROT_ID_MSB 2
+#define PROT_ID_LSB 3
+#define LENGTH_MSB 4
+#define LENGTH_LSB 5
+#define UNIT_ID 6
+#define F_CODE 7
+#define DATA_LENGTH 8
+#define DATA(x) (x)
+
 #define LSBYTE(x) ((x << 8) & 0xFF)
 #define MSBYTE(x) ((x) & 0xFF)
 
@@ -79,24 +100,38 @@ struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
     // function code provided by the client's request 7th byte
     packet.func_code = buff_recv[7];
 
+    // Read Holding Registers
+    if (packet.func_code == READ_HOLDING_REGISTERS) {
+        // data length is 2 times the number of registers (11th byte of client request)
+        packet.data_length = buff_recv[11]*2;
+        // packet length is data section length plus the 3 previous bytes
+        packet.length = packet.data_length + 3;
+        // data fetched from desired registers
+        for(int i=0; i < packet.data_length/2; i++) {
+            packet.data[i*2] = (unsigned char)(LSBYTE(registers[buff_recv[9]+i]));
+            packet.data[(i*2)+1] = (unsigned char)(MSBYTE(registers[buff_recv[9]+i]));
+        }
+    }
+
     return packet;
 }
 
 unsigned char *read_holding_registers(struct ModbusFrame packet, int size) {
     unsigned char *buffer = (unsigned char *)malloc(size * sizeof(unsigned char));
     // creating response message
-    buffer[0] = (unsigned char)(MSBYTE(packet.transac_id));
-    buffer[1] = (unsigned char)(LSBYTE(packet.transac_id));
-    buffer[2] = (unsigned char)(MSBYTE(packet.prot_id));
-    buffer[3] = (unsigned char)(LSBYTE(packet.prot_id));
-    buffer[4] = (unsigned char)(MSBYTE(packet.length));
-    buffer[5] = (unsigned char)(LSBYTE(packet.length));
-    buffer[6] = packet.unit_id;
-    buffer[7] = packet.func_code;
-    buffer[8] = packet.data_length;
+    buffer[TRAN_ID_MSB] = (unsigned char)(MSBYTE(packet.transac_id));
+    buffer[TRAN_ID_LSB] = (unsigned char)(LSBYTE(packet.transac_id));
+    buffer[PROT_ID_MSB] = (unsigned char)(MSBYTE(packet.prot_id));
+    buffer[PROT_ID_LSB] = (unsigned char)(LSBYTE(packet.prot_id));
+    buffer[LENGTH_MSB] = (unsigned char)(MSBYTE(packet.length));
+    buffer[LENGTH_LSB] = (unsigned char)(LSBYTE(packet.length));
+    buffer[UNIT_ID] = packet.unit_id;
+    buffer[F_CODE] = packet.func_code;
+    buffer[DATA_LENGTH] = packet.data_length;
     for(int i=0; i < packet.data_length; i++) {
-        buffer[9+i] = packet.data[i];
+        buffer[DATA(i+9)] = packet.data[i];
     }
+    free(packet.data);
     
     return buffer;
 }
@@ -113,52 +148,50 @@ int main() {
 
     struct ModbusFrame packet;
 
-    // Accept connections
-    if((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
-        printf("Connection failed");
-    }
-    else {
-        printf("Connection accepted\n");
-        while(1){
-            // Allocate memory for client message buffer, since the data package length varies
-            unsigned char *buff_recv = (unsigned char *)malloc(BUF_SIZE * sizeof(unsigned char));
-            // Declaring pointer to server response buffer, which memory will be allocated later
-            unsigned char *buff_sent;
-            _ssize_t bytes_recv;
-            if((bytes_recv = read(new_socket, buff_recv, BUF_SIZE)) > 0) {
-                packet = modbus_frame(buff_recv);
-                // Read Holding Registers - FC3
-                if (packet.func_code == 3) {
-                    // data length is 2 times the number of registers (11th byte of client request)
-                    packet.data_length = buff_recv[11]*2;
-                    // packet length is data section length plus the 3 previous bytes
-                    packet.length = packet.data_length + 3;
-                    // data fetched from desired registers
-                    for(int i=0; i < packet.data_length/2; i++) {
-                        packet.data[i*2] = (unsigned char)(LSBYTE(registers[buff_recv[9]+i]));
-                        packet.data[(i*2)+1] = (unsigned char)(MSBYTE(registers[buff_recv[9]+i]));
-                    }
-                    // total message length
-                    int size = packet.length + 6;
-                    buff_sent = read_holding_registers(packet, size);
-                }
+    while(1){
+        // Accept connections
+        if((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
+            printf("Connection failed\n");
+        }
+        else {
+            printf("Connection accepted\n");
+            while(1){
+                // Allocate memory for client message buffer, since the data package length varies
+                unsigned char *buff_recv = (unsigned char *)malloc(BUF_SIZE * sizeof(unsigned char));
+                // Declaring pointer to server response buffer, which memory will be allocated later
+                unsigned char *buff_sent;
+                _ssize_t bytes_recv;
 
-                printf("Client message: 0x");
-                for(int i = 0; i < bytes_recv; i++){
-                    printf("%02X ", (unsigned char)buff_recv[i]);
+                if((bytes_recv = read(new_socket, buff_recv, BUF_SIZE)) > 0) {
+                    packet = modbus_frame(buff_recv);
+                    // Read Holding Registers - FC3
+                    if (packet.func_code == 3) {
+                        // total message length
+                        int size = packet.length + 6;
+                        buff_sent = read_holding_registers(packet, size);
+                    }
+
+                    printf("Client message: 0x");
+                    for(int i = 0; i < bytes_recv; i++){
+                        printf("%02X ", (unsigned char)buff_recv[i]);
+                    }
+                    printf("\n");
+                    printf("Server response: 0x");
+                    for(int i = 0; i <= 12; i++){
+                        printf("%02X ", (unsigned char)buff_sent[i]);
+                    }
+                    printf("\n");
+                    _ssize_t res_size = packet.length + 6;
+                    send(new_socket, buff_sent, res_size, 0);
+                    free(buff_sent);
                 }
-                printf("\n");
-                printf("Server response: 0x");
-                for(int i = 0; i <= 12; i++){
-                    printf("%02X ", (unsigned char)buff_sent[i]);
+                else{
+                    free(buff_recv);
+                    printf("Connection lost...\n");
+                    break;
                 }
-                printf("\n");
-                _ssize_t res_size = packet.length + 6;
-                send(new_socket, buff_sent, res_size, 0);
+                free(buff_recv);
             }
-            free(buff_sent);
-            free(buff_recv);
-            free(packet.data);
         }
     }
 
