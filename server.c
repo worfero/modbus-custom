@@ -23,6 +23,9 @@ struct ModbusFrame {
     unsigned char *data;
 };
 
+// declare registers as global variables
+short registers[2200] = {0};
+
 int server_setup() {
     int server_fd;
     struct sockaddr_in address;
@@ -62,6 +65,23 @@ int server_setup() {
     return server_fd;
 }
 
+// fills some of the response bytes according to client's request
+struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
+    struct ModbusFrame packet;
+    // allocate memory for data section of the packet
+    packet.data = (unsigned char *)malloc((BUF_SIZE - 8) * sizeof(unsigned char));
+    // transaction ID = first two bytes of client request
+    packet.transac_id = TO_SHORT(buff_recv[0], buff_recv[1]);
+    // protocol ID is always zero for modbus
+    packet.prot_id = 0;
+    // server unit ID
+    packet.unit_id = 1;
+    // function code provided by the client's request 7th byte
+    packet.func_code = buff_recv[7];
+
+    return packet;
+}
+
 unsigned char *read_holding_registers(struct ModbusFrame packet, int size) {
     unsigned char *buffer = (unsigned char *)malloc(size * sizeof(unsigned char));
     // creating response message
@@ -87,8 +107,6 @@ int main() {
     struct sockaddr_in address;
     int addrlen = sizeof(address);
 
-    char unitID = 1;
-    short registers[2200] = {0};
     for(int i = 0; i < 101; i++) {
         registers[i] = i;
     }
@@ -108,29 +126,19 @@ int main() {
             unsigned char *buff_sent;
             _ssize_t bytes_recv;
             if((bytes_recv = read(new_socket, buff_recv, BUF_SIZE)) > 0) {
-                // allocate memory for data section of the packet
-                packet.data = (unsigned char *)malloc((BUF_SIZE - 8) * sizeof(unsigned char));
-
-                // transaction ID = first two bytes of client request
-                packet.transac_id = TO_SHORT(buff_recv[0], buff_recv[1]);
-                // protocol ID is always zero for modbus
-                packet.prot_id = 0;
-                // server unit ID
-                packet.unit_id = unitID;
-                // function code provided by the client's request 7th byte
-                packet.func_code = buff_recv[7];
-
+                packet = modbus_frame(buff_recv);
                 // Read Holding Registers - FC3
                 if (packet.func_code == 3) {
                     // data length is 2 times the number of registers (11th byte of client request)
                     packet.data_length = buff_recv[11]*2;
-                    // packet length manually tuned for now
+                    // packet length is data section length plus the 3 previous bytes
                     packet.length = packet.data_length + 3;
                     // data fetched from desired registers
                     for(int i=0; i < packet.data_length/2; i++) {
                         packet.data[i*2] = (unsigned char)(LSBYTE(registers[buff_recv[9]+i]));
                         packet.data[(i*2)+1] = (unsigned char)(MSBYTE(registers[buff_recv[9]+i]));
                     }
+                    // total message length
                     int size = packet.length + 6;
                     buff_sent = read_holding_registers(packet, size);
                 }
@@ -151,7 +159,6 @@ int main() {
             free(buff_sent);
             free(buff_recv);
             free(packet.data);
-            //free(packet.data);
         }
     }
 
