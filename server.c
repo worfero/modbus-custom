@@ -12,8 +12,8 @@
 #define READ_INPUT_REGISTER 0x04
 #define WRITE_SINGLE_COIL 0x05
 #define WRITE_SINGLE_HOLDING_REGISTER 0x06
-#define WRITE_MULTIPLE_COILS 0x0F
-#define WRITE_MULTIPLE_HOLDING_REGISTERS 0x10
+#define WRITE_COILS 0x0F
+#define WRITE_HOLDING_REGISTERS 0x10
 
 // message bytes
 #define TRAN_ID_MSB 0
@@ -25,6 +25,10 @@
 #define UNIT_ID 6
 #define F_CODE 7
 #define DATA_LENGTH 8
+#define ADDRESS_MSB 8
+#define ADDRESS_LSB 9
+#define QUANTITY_MSB 10
+#define QUANTITY_LSB 11
 #define DATA(x) (x)
 
 #define LSBYTE(x) ((x << 8) & 0xFF)
@@ -40,6 +44,8 @@ struct ModbusFrame {
     unsigned char unit_id;
     // Application layer
     unsigned char func_code;
+    short written_address;
+    short written_quantity;
     unsigned char data_length;
     unsigned char *data;
 };
@@ -86,7 +92,6 @@ int server_setup() {
     return server_fd;
 }
 
-// fills some of the response bytes according to client's request
 struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
     struct ModbusFrame packet;
     // allocate memory for data section of the packet
@@ -112,6 +117,16 @@ struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
             packet.data[(i*2)+1] = (unsigned char)(MSBYTE(registers[buff_recv[9]+i]));
         }
     }
+    else if (packet.func_code == WRITE_HOLDING_REGISTERS) {
+        // data length is always 4 bytes for write multiple holding registers. 2 for the starting address and 2 for the quantity
+        packet.data_length = 4;
+        // packet length is data section length plus the 3 previous bytes
+        packet.length = packet.data_length + 3;
+        // get address to be written from bytes 8 and 9 of client request
+        packet.written_address = TO_SHORT(buff_recv[8], buff_recv[9]);
+        // get quantity of written addresses in sequence from bytes 10 and 11 of client request
+        packet.written_quantity = TO_SHORT(buff_recv[10], buff_recv[11]);
+    }
 
     return packet;
 }
@@ -133,6 +148,25 @@ unsigned char *read_holding_registers(struct ModbusFrame packet, int size) {
     }
     free(packet.data);
     
+    return buffer;
+}
+
+unsigned char *write_holding_registers(struct ModbusFrame packet, int size) {
+    unsigned char *buffer = (unsigned char *)malloc(size * sizeof(unsigned char));
+    // creating response message
+    buffer[TRAN_ID_MSB] = (unsigned char)(MSBYTE(packet.transac_id));
+    buffer[TRAN_ID_LSB] = (unsigned char)(LSBYTE(packet.transac_id));
+    buffer[PROT_ID_MSB] = (unsigned char)(MSBYTE(packet.prot_id));
+    buffer[PROT_ID_LSB] = (unsigned char)(LSBYTE(packet.prot_id));
+    buffer[LENGTH_MSB] = (unsigned char)(MSBYTE(packet.length));
+    buffer[LENGTH_LSB] = (unsigned char)(LSBYTE(packet.length));
+    buffer[UNIT_ID] = packet.unit_id;
+    buffer[F_CODE] = packet.func_code;
+    buffer[ADDRESS_MSB] = (unsigned char)(MSBYTE(packet.written_address));
+    buffer[ADDRESS_LSB] = (unsigned char)(LSBYTE(packet.written_address));
+    buffer[QUANTITY_MSB] = (unsigned char)(MSBYTE(packet.written_quantity));
+    buffer[QUANTITY_LSB] = (unsigned char)(LSBYTE(packet.written_quantity));
+
     return buffer;
 }
 
@@ -163,13 +197,27 @@ int main() {
                 _ssize_t bytes_recv;
 
                 if((bytes_recv = read(new_socket, buff_recv, BUF_SIZE)) > 0) {
+                    // fills some of the response bytes according to client's request
                     packet = modbus_frame(buff_recv);
+
+                    // total response message length
+                    int size = packet.length + 6;
+
                     // Read Holding Registers - FC3
-                    if (packet.func_code == 3) {
-                        // total message length
-                        int size = packet.length + 6;
+                    if (packet.func_code == READ_HOLDING_REGISTERS) {
                         buff_sent = read_holding_registers(packet, size);
                     }
+
+                    // Write Holding Registers - FC16
+                    else if (packet.func_code == WRITE_HOLDING_REGISTERS) {
+                        // data to be written to desired registers
+                        for(int i=0; i < packet.written_quantity; i++) {
+                            registers[(packet.written_address + i)] = TO_SHORT(buff_recv[13+(2*i)], buff_recv[14+(2*i)]);
+                        }
+                        buff_sent = write_holding_registers(packet, size);
+                    }
+
+                    _ssize_t res_size = packet.length + 6;
 
                     printf("Client message: 0x");
                     for(int i = 0; i < bytes_recv; i++){
@@ -177,11 +225,10 @@ int main() {
                     }
                     printf("\n");
                     printf("Server response: 0x");
-                    for(int i = 0; i <= 12; i++){
+                    for(int i = 0; i <= res_size; i++){
                         printf("%02X ", (unsigned char)buff_sent[i]);
                     }
                     printf("\n");
-                    _ssize_t res_size = packet.length + 6;
                     send(new_socket, buff_sent, res_size, 0);
                     free(buff_sent);
                 }
