@@ -62,6 +62,25 @@ int server_setup() {
     return server_fd;
 }
 
+unsigned char *read_holding_registers(struct ModbusFrame packet, int size) {
+    unsigned char *buffer = (unsigned char *)malloc(size * sizeof(unsigned char));
+    // creating response message
+    buffer[0] = (unsigned char)(MSBYTE(packet.transac_id));
+    buffer[1] = (unsigned char)(LSBYTE(packet.transac_id));
+    buffer[2] = (unsigned char)(MSBYTE(packet.prot_id));
+    buffer[3] = (unsigned char)(LSBYTE(packet.prot_id));
+    buffer[4] = (unsigned char)(MSBYTE(packet.length));
+    buffer[5] = (unsigned char)(LSBYTE(packet.length));
+    buffer[6] = packet.unit_id;
+    buffer[7] = packet.func_code;
+    buffer[8] = packet.data_length;
+    for(int i=0; i < packet.data_length; i++) {
+        buffer[9+i] = packet.data[i];
+    }
+    
+    return buffer;
+}
+
 int main() {
     int server_fd = server_setup();
     int new_socket;
@@ -83,9 +102,10 @@ int main() {
     else {
         printf("Connection accepted\n");
         while(1){
-            // Allocate memory for buffers, since the data package length varies
+            // Allocate memory for client message buffer, since the data package length varies
             unsigned char *buff_recv = (unsigned char *)malloc(BUF_SIZE * sizeof(unsigned char));
-            unsigned char *buff_sent = (unsigned char *)malloc(BUF_SIZE * sizeof(unsigned char));
+            // Declaring pointer to server response buffer, which memory will be allocated later
+            unsigned char *buff_sent;
             _ssize_t bytes_recv;
             if((bytes_recv = read(new_socket, buff_recv, BUF_SIZE)) > 0) {
                 // allocate memory for data section of the packet
@@ -99,28 +119,20 @@ int main() {
                 packet.unit_id = unitID;
                 // function code provided by the client's request 7th byte
                 packet.func_code = buff_recv[7];
-                // data length is 2 times the number of registers (11th byte of client request)
-                packet.data_length = buff_recv[11]*2;
-                // packet length manually tuned for now
-                packet.length = packet.data_length + 3;
-                // data fetched from desired registers
-                for(int i=0; i < packet.data_length/2; i++) {
-                    packet.data[i*2] = (unsigned char)(LSBYTE(registers[buff_recv[9]+i]));
-                    packet.data[(i*2)+1] = (unsigned char)(MSBYTE(registers[buff_recv[9]+i]));
-                }
 
-                // creating response message
-                buff_sent[0] = (unsigned char)(MSBYTE(packet.transac_id));
-                buff_sent[1] = (unsigned char)(LSBYTE(packet.transac_id));
-                buff_sent[2] = (unsigned char)(MSBYTE(packet.prot_id));
-                buff_sent[3] = (unsigned char)(LSBYTE(packet.prot_id));
-                buff_sent[4] = (unsigned char)(MSBYTE(packet.length));
-                buff_sent[5] = (unsigned char)(LSBYTE(packet.length));
-                buff_sent[6] = packet.unit_id;
-                buff_sent[7] = packet.func_code;
-                buff_sent[8] = packet.data_length;
-                for(int i=0; i < packet.data_length; i++) {
-                    buff_sent[9+i] = packet.data[i];
+                // Read Holding Registers - FC3
+                if (packet.func_code == 3) {
+                    // data length is 2 times the number of registers (11th byte of client request)
+                    packet.data_length = buff_recv[11]*2;
+                    // packet length manually tuned for now
+                    packet.length = packet.data_length + 3;
+                    // data fetched from desired registers
+                    for(int i=0; i < packet.data_length/2; i++) {
+                        packet.data[i*2] = (unsigned char)(LSBYTE(registers[buff_recv[9]+i]));
+                        packet.data[(i*2)+1] = (unsigned char)(MSBYTE(registers[buff_recv[9]+i]));
+                    }
+                    int size = packet.length + 6;
+                    buff_sent = read_holding_registers(packet, size);
                 }
 
                 printf("Client message: 0x");
