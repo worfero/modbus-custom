@@ -25,6 +25,7 @@
 #define LENGTH_LSB 5
 #define UNIT_ID 6
 #define F_CODE 7
+#define EXCEPTION 8
 #define DATA_LENGTH 8
 #define ADDRESS_MSB 8
 #define ADDRESS_LSB 9
@@ -48,6 +49,7 @@ struct ModbusFrame {
     short written_address;
     short written_quantity;
     unsigned char data_length;
+    unsigned char exception;
     unsigned char *data;
 };
 
@@ -140,6 +142,17 @@ void write_holding_registers(struct ModbusFrame *packet, unsigned char *buff_rec
     }
 }
 
+void exception(struct ModbusFrame *packet, unsigned char *buff_recv) {
+    // generate exception function code
+    packet->func_code = packet->func_code + 0x80;
+    // exception code 01 - function code not found
+    packet->exception = 0x01;
+    // for exceptions, length is always 6
+    packet->length = 6;
+
+    printf("Illegal function code, request was not successful\n");
+}
+
 struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
     struct ModbusFrame packet;
     // transaction ID = first two bytes of client request
@@ -162,6 +175,9 @@ struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
     // Write Holding Registers
     else if (packet.func_code == WRITE_HOLDING_REGISTERS) {
         write_holding_registers(&packet, buff_recv);
+    }
+    else {
+        exception(&packet, buff_recv);
     }
 
     return packet;
@@ -206,6 +222,22 @@ unsigned char *write_response(struct ModbusFrame packet, int size) {
     return buffer;
 }
 
+unsigned char *exception_response(struct ModbusFrame packet, int size) {
+    unsigned char *buffer = (unsigned char *)malloc(size * sizeof(unsigned char));
+    // creating response message
+    buffer[TRAN_ID_MSB] = (unsigned char)(MSBYTE(packet.transac_id));
+    buffer[TRAN_ID_LSB] = (unsigned char)(LSBYTE(packet.transac_id));
+    buffer[PROT_ID_MSB] = (unsigned char)(MSBYTE(packet.prot_id));
+    buffer[PROT_ID_LSB] = (unsigned char)(LSBYTE(packet.prot_id));
+    buffer[LENGTH_MSB] = (unsigned char)(MSBYTE(packet.length));
+    buffer[LENGTH_LSB] = (unsigned char)(LSBYTE(packet.length));
+    buffer[UNIT_ID] = packet.unit_id;
+    buffer[F_CODE] = packet.func_code;
+    buffer[EXCEPTION] = packet.exception;
+
+    return buffer;
+}
+
 int main() {
     int server_fd = server_setup();
     int new_socket;
@@ -242,8 +274,6 @@ int main() {
                     // total response message length
                     int size = packet.length + 6;
 
-                    printf("%c\n", packet.func_code);
-
                     // Read operation buffer
                     if (packet.func_code == READ_HOLDING_REGISTERS || packet.func_code == READ_INPUT_REGISTERS) {
                         buff_sent = read_response(packet, size);
@@ -252,6 +282,11 @@ int main() {
                     // Write operation buffer
                     else if (packet.func_code == WRITE_HOLDING_REGISTERS) {
                         buff_sent = write_response(packet, size);
+                    }
+
+                    // Illegal function code exception
+                    else {
+                        buff_sent = exception_response(packet, size);
                     }
 
                     _ssize_t res_size = packet.length + 6;
