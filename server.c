@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <stdbool.h>
 
 #define PORT 502
 #define BUF_SIZE 128
@@ -51,7 +52,11 @@ struct ModbusFrame {
 };
 
 // declare registers as global variables
-short registers[2200] = {0};
+short holding_registers[2000] = {0};
+short input_registers[2000] = {0};
+bool coils[2000] = {0};
+bool discrete_inputs[2000] = {0};
+
 
 int server_setup() {
     int server_fd;
@@ -113,8 +118,8 @@ struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
         packet.length = packet.data_length + 3;
         // data fetched from desired registers
         for(int i=0; i < packet.data_length/2; i++) {
-            packet.data[i*2] = (unsigned char)(LSBYTE(registers[buff_recv[9]+i]));
-            packet.data[(i*2)+1] = (unsigned char)(MSBYTE(registers[buff_recv[9]+i]));
+            packet.data[i*2] = (unsigned char)(LSBYTE(holding_registers[buff_recv[9]+i]));
+            packet.data[(i*2)+1] = (unsigned char)(MSBYTE(holding_registers[buff_recv[9]+i]));
         }
     }
     else if (packet.func_code == WRITE_HOLDING_REGISTERS) {
@@ -177,7 +182,10 @@ int main() {
     int addrlen = sizeof(address);
 
     for(int i = 0; i < 101; i++) {
-        registers[i] = i;
+        holding_registers[i] = i;
+        input_registers[i] = i;
+        coils[i] = i%2;
+        discrete_inputs[i] = i%2;
     }
 
     struct ModbusFrame packet;
@@ -212,7 +220,7 @@ int main() {
                     else if (packet.func_code == WRITE_HOLDING_REGISTERS) {
                         // data to be written to desired registers
                         for(int i=0; i < packet.written_quantity; i++) {
-                            registers[(packet.written_address + i)] = TO_SHORT(buff_recv[13+(2*i)], buff_recv[14+(2*i)]);
+                            holding_registers[(packet.written_address + i)] = TO_SHORT(buff_recv[13+(2*i)], buff_recv[14+(2*i)]);
                         }
                         buff_sent = write_holding_registers(packet, size);
                     }
