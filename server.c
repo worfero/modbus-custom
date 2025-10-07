@@ -7,6 +7,7 @@
 #define PORT 502
 #define BUF_SIZE 128
 
+// function codes
 #define READ_COILS 0x01
 #define READ_DISCRETE_INPUTS 0x02
 #define READ_HOLDING_REGISTERS 0x03
@@ -25,17 +26,27 @@
 #define LENGTH_LSB 5
 #define UNIT_ID 6
 #define F_CODE 7
+// exception byte
 #define EXCEPTION 8
+// data length for reading registers byte
 #define DATA_LENGTH 8
+// address of registers to be written bytes
 #define ADDRESS_MSB 8
 #define ADDRESS_LSB 9
+// quantity of registers to be written in sequence bytes
 #define QUANTITY_MSB 10
 #define QUANTITY_LSB 11
+// data to be returned to client on reading operations, variable size
 #define DATA(x) (x)
 
+// exception codes
+#define ILLEGAL_FC 0x01
+
+// most significante and less significant byte macros
 #define LSBYTE(x) ((x << 8) & 0xFF)
 #define MSBYTE(x) ((x) & 0xFF)
 
+// two char to short conversion macro
 #define TO_SHORT(x, y) (((short)x) << 8) | y
 
 struct ModbusFrame {
@@ -100,10 +111,10 @@ int server_setup() {
 }
 
 void read_holding_registers(struct ModbusFrame *packet, unsigned char *buff_recv) {
-    // allocate memory for data section of the packet
-    packet->data = (unsigned char *)malloc((BUF_SIZE - 8) * sizeof(unsigned char));
     // data length is 2 times the number of registers (11th byte of client request)
     packet->data_length = buff_recv[11]*2;
+    // allocate memory for data section of the packet
+    packet->data = (unsigned char *)malloc((packet->data_length) * sizeof(unsigned char));
     // packet length is data section length plus the 3 previous bytes
     packet->length = packet->data_length + 3;
     // data fetched from desired registers
@@ -114,10 +125,10 @@ void read_holding_registers(struct ModbusFrame *packet, unsigned char *buff_recv
 }
 
 void read_input_registers(struct ModbusFrame *packet, unsigned char *buff_recv) {
-    // allocate memory for data section of the packet
-    packet->data = (unsigned char *)malloc((BUF_SIZE - 8) * sizeof(unsigned char));
     // data length is 2 times the number of registers (11th byte of client request)
     packet->data_length = buff_recv[11]*2;
+    // allocate memory for data section of the packet
+    packet->data = (unsigned char *)malloc((packet->data_length) * sizeof(unsigned char));
     // packet length is data section length plus the 3 previous bytes
     packet->length = packet->data_length + 3;
     // data fetched from desired registers
@@ -142,11 +153,25 @@ void write_holding_registers(struct ModbusFrame *packet, unsigned char *buff_rec
     }
 }
 
+void read_coils(struct ModbusFrame *packet, unsigned char *buff_recv) {
+    // allocate memory for data section of the packet
+    packet->data = (unsigned char *)malloc((BUF_SIZE - 8) * sizeof(unsigned char));
+    // data length is 2 times the number of registers (11th byte of client request)
+    packet->data_length = buff_recv[11]*2;
+    // packet length is data section length plus the 3 previous bytes
+    packet->length = packet->data_length + 3;
+    // data fetched from desired registers
+    for(int i=0; i < packet->data_length/2; i++) {
+        packet->data[i*2] = (unsigned char)(LSBYTE(holding_registers[buff_recv[9]+i]));
+        packet->data[(i*2)+1] = (unsigned char)(MSBYTE(holding_registers[buff_recv[9]+i]));
+    }
+}
+
 void exception(struct ModbusFrame *packet, unsigned char *buff_recv) {
-    // generate exception function code
+    // generate exception function code (FC + 128 according to modbus definition)
     packet->func_code = packet->func_code + 0x80;
     // exception code 01 - function code not found
-    packet->exception = 0x01;
+    packet->exception = ILLEGAL_FC;
     // for exceptions, length is always 6
     packet->length = 6;
 
@@ -176,6 +201,7 @@ struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
     else if (packet.func_code == WRITE_HOLDING_REGISTERS) {
         write_holding_registers(&packet, buff_recv);
     }
+    // Illegal function code
     else {
         exception(&packet, buff_recv);
     }
