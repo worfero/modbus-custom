@@ -113,6 +113,52 @@ int server_setup() {
     return server_fd;
 }
 
+void read_coils(struct ModbusFrame *packet, unsigned char *buff_recv) {
+    // number of coils to be read is 11th byte of client request
+    unsigned char number_of_coils = buff_recv[11];
+    // data length is the division of the number of coils to be read by 8 (char size) rounded up
+    packet->data_length = CEIL(number_of_coils, 8);
+    // allocate memory for data section of the packet
+    packet->data = (unsigned char *)calloc((packet->data_length), sizeof(unsigned char));
+    // packet length is data section length plus the 3 previous bytes
+    packet->length = packet->data_length + 3;
+    // data fetched from desired coils
+    for(int i=0; i < packet->data_length; i++) {
+        for (int j = 0; j < 8; ++j) {
+            if (coils[buff_recv[9] + (j+(i*8))] && (number_of_coils > 0)) {
+                // If the coil is true, set the bit on the data section array
+                packet->data[i] |= (1 << j); 
+            }
+            if(number_of_coils > 0) {
+                number_of_coils--;
+            }
+        }
+    }
+}
+
+void read_discrete_inputs(struct ModbusFrame *packet, unsigned char *buff_recv) {
+    // number of coils to be read is 11th byte of client request
+    unsigned char number_of_discretes = buff_recv[11];
+    // data length is the division of the number of coils to be read by 8 (char size) rounded up
+    packet->data_length = CEIL(number_of_discretes, 8);
+    // allocate memory for data section of the packet
+    packet->data = (unsigned char *)calloc((packet->data_length), sizeof(unsigned char));
+    // packet length is data section length plus the 3 previous bytes
+    packet->length = packet->data_length + 3;
+    // data fetched from desired coils
+    for(int i=0; i < packet->data_length; i++) {
+        for (int j = 0; j < 8; ++j) {
+            if (discrete_inputs[buff_recv[9] + (j+(i*8))] && (number_of_discretes > 0)) {
+                // If the coil is true, set the bit on the data section array
+                packet->data[i] |= (1 << j); 
+            }
+            if(number_of_discretes > 0) {
+                number_of_discretes--;
+            }
+        }
+    }
+}
+
 void read_holding_registers(struct ModbusFrame *packet, unsigned char *buff_recv) {
     // data length is 2 times the number of registers (11th byte of client request)
     packet->data_length = buff_recv[11]*2;
@@ -156,29 +202,6 @@ void write_holding_registers(struct ModbusFrame *packet, unsigned char *buff_rec
     }
 }
 
-void read_coils(struct ModbusFrame *packet, unsigned char *buff_recv) {
-    // number of coils to be read is 11th byte of client request
-    unsigned char number_of_coils = buff_recv[11];
-    // data length is the division of the number of coils to be read by 8 (char size) rounded up
-    packet->data_length = CEIL(number_of_coils, 8);
-    // allocate memory for data section of the packet
-    packet->data = (unsigned char *)calloc((packet->data_length), sizeof(unsigned char));
-    // packet length is data section length plus the 3 previous bytes
-    packet->length = packet->data_length + 3;
-    // data fetched from desired coils
-    for(int i=0; i < packet->data_length; i++) {
-        for (int j = 0; j < 8; ++j) {
-            if (coils[j+(i*8)] && (number_of_coils > 0)) {
-                // If the coil is true, set the bit on the data section array
-                packet->data[i] |= (1 << j); 
-            }
-            if(number_of_coils > 0) {
-                number_of_coils--;
-            }
-        }
-    }
-}
-
 void exception(struct ModbusFrame *packet, unsigned char *buff_recv) {
     // generate exception function code (FC + 128 according to modbus definition)
     packet->func_code = packet->func_code + 0x80;
@@ -202,6 +225,12 @@ struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
     packet.func_code = buff_recv[7];
 
     switch(packet.func_code){
+        case READ_COILS:
+            read_coils(&packet, buff_recv);
+            break;
+        case READ_DISCRETE_INPUTS:
+            read_discrete_inputs(&packet, buff_recv);
+            break;
         case READ_HOLDING_REGISTERS:
             read_holding_registers(&packet, buff_recv);
             break;
@@ -210,9 +239,6 @@ struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
             break;
         case WRITE_HOLDING_REGISTERS:
             write_holding_registers(&packet, buff_recv);
-            break;
-        case READ_COILS:
-            read_coils(&packet, buff_recv);
             break;
         default:
             exception(&packet, buff_recv);
@@ -287,7 +313,7 @@ int main() {
         holding_registers[i] = i;
         input_registers[i] = 2*i;
         coils[i] = i%2;
-        discrete_inputs[i] = i%2;
+        discrete_inputs[i+1] = i%2;
     }
 
     struct ModbusFrame packet;
@@ -315,9 +341,10 @@ int main() {
 
                     switch(packet.func_code) {
                         // Read operation buffer
+                        case READ_COILS:
+                        case READ_DISCRETE_INPUTS:
                         case READ_HOLDING_REGISTERS:
                         case READ_INPUT_REGISTERS:
-                        case READ_COILS:
                             buff_sent = read_response(packet, size);
                             break;
                         // Write operation buffer
