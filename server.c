@@ -46,6 +46,9 @@
 #define LSBYTE(x) ((x << 8) & 0xFF)
 #define MSBYTE(x) ((x) & 0xFF)
 
+// round division up macro
+#define CEIL(x, y) ((x + y - 1) / y)
+
 // two char to short conversion macro
 #define TO_SHORT(x, y) (((short)x) << 8) | y
 
@@ -114,7 +117,7 @@ void read_holding_registers(struct ModbusFrame *packet, unsigned char *buff_recv
     // data length is 2 times the number of registers (11th byte of client request)
     packet->data_length = buff_recv[11]*2;
     // allocate memory for data section of the packet
-    packet->data = (unsigned char *)malloc((packet->data_length) * sizeof(unsigned char));
+    packet->data = (unsigned char *)calloc((packet->data_length), sizeof(unsigned char));
     // packet length is data section length plus the 3 previous bytes
     packet->length = packet->data_length + 3;
     // data fetched from desired registers
@@ -128,7 +131,7 @@ void read_input_registers(struct ModbusFrame *packet, unsigned char *buff_recv) 
     // data length is 2 times the number of registers (11th byte of client request)
     packet->data_length = buff_recv[11]*2;
     // allocate memory for data section of the packet
-    packet->data = (unsigned char *)malloc((packet->data_length) * sizeof(unsigned char));
+    packet->data = (unsigned char *)calloc((packet->data_length), sizeof(unsigned char));
     // packet length is data section length plus the 3 previous bytes
     packet->length = packet->data_length + 3;
     // data fetched from desired registers
@@ -154,16 +157,25 @@ void write_holding_registers(struct ModbusFrame *packet, unsigned char *buff_rec
 }
 
 void read_coils(struct ModbusFrame *packet, unsigned char *buff_recv) {
+    // number of coils to be read is 11th byte of client request
+    unsigned char number_of_coils = buff_recv[11];
+    // data length is the division of the number of coils to be read by 8 (char size) rounded up
+    packet->data_length = CEIL(number_of_coils, 8);
     // allocate memory for data section of the packet
-    packet->data = (unsigned char *)malloc((BUF_SIZE - 8) * sizeof(unsigned char));
-    // data length is 2 times the number of registers (11th byte of client request)
-    packet->data_length = buff_recv[11]*2;
+    packet->data = (unsigned char *)calloc((packet->data_length), sizeof(unsigned char));
     // packet length is data section length plus the 3 previous bytes
     packet->length = packet->data_length + 3;
-    // data fetched from desired registers
-    for(int i=0; i < packet->data_length/2; i++) {
-        packet->data[i*2] = (unsigned char)(LSBYTE(holding_registers[buff_recv[9]+i]));
-        packet->data[(i*2)+1] = (unsigned char)(MSBYTE(holding_registers[buff_recv[9]+i]));
+    // data fetched from desired coils
+    for(int i=0; i < packet->data_length; i++) {
+        for (int j = 0; j < 8; ++j) {
+            if (coils[j+(i*8)] && (number_of_coils > 0)) {
+                // If the coil is true, set the bit on the data section array
+                packet->data[i] |= (1 << j); 
+            }
+            if(number_of_coils > 0) {
+                number_of_coils--;
+            }
+        }
     }
 }
 
@@ -200,6 +212,9 @@ struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
     // Write Holding Registers
     else if (packet.func_code == WRITE_HOLDING_REGISTERS) {
         write_holding_registers(&packet, buff_recv);
+    }
+    else if (packet.func_code == READ_COILS) {
+        read_coils(&packet, buff_recv);
     }
     // Illegal function code
     else {
@@ -301,7 +316,7 @@ int main() {
                     int size = packet.length + 6;
 
                     // Read operation buffer
-                    if (packet.func_code == READ_HOLDING_REGISTERS || packet.func_code == READ_INPUT_REGISTERS) {
+                    if (packet.func_code == READ_HOLDING_REGISTERS || packet.func_code == READ_INPUT_REGISTERS || packet.func_code == READ_COILS) {
                         buff_sent = read_response(packet, size);
                     }
 
