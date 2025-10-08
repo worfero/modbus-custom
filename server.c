@@ -201,24 +201,22 @@ struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
     // function code provided by the client's request 7th byte
     packet.func_code = buff_recv[7];
 
-    // Read Holding Registers
-    if (packet.func_code == READ_HOLDING_REGISTERS) {
-        read_holding_registers(&packet, buff_recv);
-    }
-    // Read Input Registers
-    else if (packet.func_code == READ_INPUT_REGISTERS) {
-        read_input_registers(&packet, buff_recv);
-    }
-    // Write Holding Registers
-    else if (packet.func_code == WRITE_HOLDING_REGISTERS) {
-        write_holding_registers(&packet, buff_recv);
-    }
-    else if (packet.func_code == READ_COILS) {
-        read_coils(&packet, buff_recv);
-    }
-    // Illegal function code
-    else {
-        exception(&packet, buff_recv);
+    switch(packet.func_code){
+        case READ_HOLDING_REGISTERS:
+            read_holding_registers(&packet, buff_recv);
+            break;
+        case READ_INPUT_REGISTERS:
+            read_input_registers(&packet, buff_recv);
+            break;
+        case WRITE_HOLDING_REGISTERS:
+            write_holding_registers(&packet, buff_recv);
+            break;
+        case READ_COILS:
+            read_coils(&packet, buff_recv);
+            break;
+        default:
+            exception(&packet, buff_recv);
+            break;
     }
 
     return packet;
@@ -315,21 +313,23 @@ int main() {
                     // total response message length
                     int size = packet.length + 6;
 
-                    // Read operation buffer
-                    if (packet.func_code == READ_HOLDING_REGISTERS || packet.func_code == READ_INPUT_REGISTERS || packet.func_code == READ_COILS) {
-                        buff_sent = read_response(packet, size);
+                    switch(packet.func_code) {
+                        // Read operation buffer
+                        case READ_HOLDING_REGISTERS:
+                        case READ_INPUT_REGISTERS:
+                        case READ_COILS:
+                            buff_sent = read_response(packet, size);
+                            break;
+                        // Write operation buffer
+                        case WRITE_HOLDING_REGISTERS:
+                            buff_sent = write_response(packet, size);
+                            break;
+                        // Illegal function code exception
+                        default:
+                            buff_sent = exception_response(packet, size);
+                            break;
                     }
-
-                    // Write operation buffer
-                    else if (packet.func_code == WRITE_HOLDING_REGISTERS) {
-                        buff_sent = write_response(packet, size);
-                    }
-
-                    // Illegal function code exception
-                    else {
-                        buff_sent = exception_response(packet, size);
-                    }
-
+                    
                     _ssize_t res_size = packet.length + 6;
 
                     printf("Client message: 0x");
