@@ -202,6 +202,30 @@ void write_holding_registers(struct ModbusFrame *packet, unsigned char *buff_rec
     }
 }
 
+void write_coils(struct ModbusFrame *packet, unsigned char *buff_recv) {
+    // number of registers to be written is 11th byte of client request
+    unsigned int number_of_bytes = CEIL((TO_SHORT(buff_recv[10], buff_recv[11])), 8);
+    // data length is always 4 bytes for write multiple holding registers. 2 for the starting address and 2 for the quantity
+    packet->data_length = 4;
+    // packet length is data section length plus the 3 previous bytes
+    packet->length = packet->data_length + 3;
+    // get address to be written from bytes 8 and 9 of client request
+    packet->written_address = TO_SHORT(buff_recv[8], buff_recv[9]);
+    // get quantity of written addresses in sequence from bytes 10 and 11 of client request
+    packet->written_quantity = TO_SHORT(buff_recv[10], buff_recv[11]);
+    // write coils logic
+    for(int i=0; i < number_of_bytes; i++) { // byte count
+        for(int j=0; j < 8; j++) { // bit count
+            if((j+(i*8)) < packet->written_quantity) { // if there are still coils to be written, proceed
+                coils[(j+(i*8))] = (buff_recv[13+i] >> j) & 0x01; // write j(th) bit of the byte to be written in client request
+            }
+            else { // if the number of coils to be written was reached, stop there and break
+                break;
+            }
+        }
+    }
+}
+
 void exception(struct ModbusFrame *packet, unsigned char *buff_recv) {
     // generate exception function code (FC + 128 according to modbus definition)
     packet->func_code = packet->func_code + 0x80;
@@ -236,6 +260,9 @@ struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
             break;
         case READ_INPUT_REGISTERS:
             read_input_registers(&packet, buff_recv);
+            break;
+        case WRITE_COILS:
+            write_coils(&packet, buff_recv);
             break;
         case WRITE_HOLDING_REGISTERS:
             write_holding_registers(&packet, buff_recv);
@@ -348,6 +375,7 @@ int main() {
                             buff_sent = read_response(packet, size);
                             break;
                         // Write operation buffer
+                        case WRITE_COILS:
                         case WRITE_HOLDING_REGISTERS:
                             buff_sent = write_response(packet, size);
                             break;
