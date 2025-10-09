@@ -42,9 +42,9 @@
 // exception codes
 #define ILLEGAL_FC 0x01
 
-// most significante and less significant byte macros
-#define LSBYTE(x) ((x << 8) & 0xFF)
-#define MSBYTE(x) ((x) & 0xFF)
+// most significant and less significant byte macros
+#define MSBYTE(x) ((x >> 8) & 0xFF)
+#define LSBYTE(x) ((x) & 0xFF)
 
 // round division up macro
 #define CEIL(x, y) ((x + y - 1) / y)
@@ -168,8 +168,8 @@ void read_holding_registers(struct ModbusFrame *packet, unsigned char *buff_recv
     packet->length = packet->data_length + 3;
     // data fetched from desired registers
     for(int i=0; i < packet->data_length/2; i++) {
-        packet->data[i*2] = (unsigned char)(LSBYTE(holding_registers[buff_recv[9]+i]));
-        packet->data[(i*2)+1] = (unsigned char)(MSBYTE(holding_registers[buff_recv[9]+i]));
+        packet->data[i*2] = (unsigned char)(MSBYTE(holding_registers[buff_recv[9]+i]));
+        packet->data[(i*2)+1] = (unsigned char)(LSBYTE(holding_registers[buff_recv[9]+i]));
     }
 }
 
@@ -182,8 +182,8 @@ void read_input_registers(struct ModbusFrame *packet, unsigned char *buff_recv) 
     packet->length = packet->data_length + 3;
     // data fetched from desired registers
     for(int i=0; i < packet->data_length/2; i++) {
-        packet->data[i*2] = (unsigned char)(LSBYTE(input_registers[buff_recv[9]+i]));
-        packet->data[(i*2)+1] = (unsigned char)(MSBYTE(input_registers[buff_recv[9]+i]));
+        packet->data[i*2] = (unsigned char)(MSBYTE(input_registers[buff_recv[9]+i]));
+        packet->data[(i*2)+1] = (unsigned char)(LSBYTE(input_registers[buff_recv[9]+i]));
     }
 }
 
@@ -278,12 +278,12 @@ struct ModbusFrame modbus_frame(unsigned char *buff_recv) {
 unsigned char *read_response(struct ModbusFrame packet, int size) {
     unsigned char *buffer = (unsigned char *)malloc(size * sizeof(unsigned char));
     // creating response message
-    buffer[TRAN_ID_MSB] = (unsigned char)(MSBYTE(packet.transac_id));
-    buffer[TRAN_ID_LSB] = (unsigned char)(LSBYTE(packet.transac_id));
-    buffer[PROT_ID_MSB] = (unsigned char)(MSBYTE(packet.prot_id));
-    buffer[PROT_ID_LSB] = (unsigned char)(LSBYTE(packet.prot_id));
-    buffer[LENGTH_MSB] = (unsigned char)(MSBYTE(packet.length));
-    buffer[LENGTH_LSB] = (unsigned char)(LSBYTE(packet.length));
+    buffer[TRAN_ID_MSB] = (unsigned char)(LSBYTE(packet.transac_id));
+    buffer[TRAN_ID_LSB] = (unsigned char)(MSBYTE(packet.transac_id));
+    buffer[PROT_ID_MSB] = (unsigned char)(LSBYTE(packet.prot_id));
+    buffer[PROT_ID_LSB] = (unsigned char)(MSBYTE(packet.prot_id));
+    buffer[LENGTH_MSB] = (unsigned char)(LSBYTE(packet.length));
+    buffer[LENGTH_LSB] = (unsigned char)(MSBYTE(packet.length));
     buffer[UNIT_ID] = packet.unit_id;
     buffer[F_CODE] = packet.func_code;
     buffer[DATA_LENGTH] = packet.data_length;
@@ -298,18 +298,18 @@ unsigned char *read_response(struct ModbusFrame packet, int size) {
 unsigned char *write_response(struct ModbusFrame packet, int size) {
     unsigned char *buffer = (unsigned char *)malloc(size * sizeof(unsigned char));
     // creating response message
-    buffer[TRAN_ID_MSB] = (unsigned char)(MSBYTE(packet.transac_id));
-    buffer[TRAN_ID_LSB] = (unsigned char)(LSBYTE(packet.transac_id));
-    buffer[PROT_ID_MSB] = (unsigned char)(MSBYTE(packet.prot_id));
-    buffer[PROT_ID_LSB] = (unsigned char)(LSBYTE(packet.prot_id));
-    buffer[LENGTH_MSB] = (unsigned char)(MSBYTE(packet.length));
-    buffer[LENGTH_LSB] = (unsigned char)(LSBYTE(packet.length));
+    buffer[TRAN_ID_MSB] = (unsigned char)(LSBYTE(packet.transac_id));
+    buffer[TRAN_ID_LSB] = (unsigned char)(MSBYTE(packet.transac_id));
+    buffer[PROT_ID_MSB] = (unsigned char)(LSBYTE(packet.prot_id));
+    buffer[PROT_ID_LSB] = (unsigned char)(MSBYTE(packet.prot_id));
+    buffer[LENGTH_MSB] = (unsigned char)(LSBYTE(packet.length));
+    buffer[LENGTH_LSB] = (unsigned char)(MSBYTE(packet.length));
     buffer[UNIT_ID] = packet.unit_id;
     buffer[F_CODE] = packet.func_code;
-    buffer[ADDRESS_MSB] = (unsigned char)(MSBYTE(packet.written_address));
-    buffer[ADDRESS_LSB] = (unsigned char)(LSBYTE(packet.written_address));
-    buffer[QUANTITY_MSB] = (unsigned char)(MSBYTE(packet.written_quantity));
-    buffer[QUANTITY_LSB] = (unsigned char)(LSBYTE(packet.written_quantity));
+    buffer[ADDRESS_MSB] = (unsigned char)(LSBYTE(packet.written_address));
+    buffer[ADDRESS_LSB] = (unsigned char)(MSBYTE(packet.written_address));
+    buffer[QUANTITY_MSB] = (unsigned char)(LSBYTE(packet.written_quantity));
+    buffer[QUANTITY_LSB] = (unsigned char)(MSBYTE(packet.written_quantity));
 
     return buffer;
 }
@@ -317,12 +317,12 @@ unsigned char *write_response(struct ModbusFrame packet, int size) {
 unsigned char *exception_response(struct ModbusFrame packet, int size) {
     unsigned char *buffer = (unsigned char *)malloc(size * sizeof(unsigned char));
     // creating response message
-    buffer[TRAN_ID_MSB] = (unsigned char)(MSBYTE(packet.transac_id));
-    buffer[TRAN_ID_LSB] = (unsigned char)(LSBYTE(packet.transac_id));
-    buffer[PROT_ID_MSB] = (unsigned char)(MSBYTE(packet.prot_id));
-    buffer[PROT_ID_LSB] = (unsigned char)(LSBYTE(packet.prot_id));
-    buffer[LENGTH_MSB] = (unsigned char)(MSBYTE(packet.length));
-    buffer[LENGTH_LSB] = (unsigned char)(LSBYTE(packet.length));
+    buffer[TRAN_ID_MSB] = (unsigned char)(LSBYTE(packet.transac_id));
+    buffer[TRAN_ID_LSB] = (unsigned char)(MSBYTE(packet.transac_id));
+    buffer[PROT_ID_MSB] = (unsigned char)(LSBYTE(packet.prot_id));
+    buffer[PROT_ID_LSB] = (unsigned char)(MSBYTE(packet.prot_id));
+    buffer[LENGTH_MSB] = (unsigned char)(LSBYTE(packet.length));
+    buffer[LENGTH_LSB] = (unsigned char)(MSBYTE(packet.length));
     buffer[UNIT_ID] = packet.unit_id;
     buffer[F_CODE] = packet.func_code;
     buffer[EXCEPTION] = packet.exception;
@@ -393,7 +393,7 @@ int main() {
                     }
                     printf("\n");
                     printf("Server response: 0x");
-                    for(int i = 0; i <= res_size; i++){
+                    for(int i = 0; i < res_size; i++){
                         printf("%02X ", (unsigned char)buff_sent[i]);
                     }
                     printf("\n");
