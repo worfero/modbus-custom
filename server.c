@@ -217,7 +217,7 @@ void write_coils(struct ModbusFrame *packet, unsigned char *buff_recv) {
     for(int i=0; i < number_of_bytes; i++) { // byte count
         for(int j=0; j < 8; j++) { // bit count
             if((j+(i*8)) < packet->written_quantity) { // if there are still coils to be written, proceed
-                coils[(j+(i*8))] = (buff_recv[13+i] >> j) & 0x01; // write j(th) bit of the byte to be written in client request
+                coils[(packet->written_address + (j+(i*8)))] = (buff_recv[13+i] >> j) & 0x01; // write j(th) bit of the byte to be written in client request
             }
             else { // if the number of coils to be written was reached, stop there and break
                 break;
